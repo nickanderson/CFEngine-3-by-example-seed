@@ -11,6 +11,7 @@ body common control
  inputs => { 
             "cfengine_stdlib.cf", 
             "firewall.cf",
+            "policyhub.cf",
            };
 
  version => "Community Promises.cf 1.0.0";
@@ -28,10 +29,16 @@ bundle agent main
     comment => "Generate a report on the policy hub so we can see who has been connecting";
 
  methods:
-  "firewall"
-    usebundle => firewall_open("tcp", "5308"),
-    comment   => "Clients will not be able to bootstrap if the firewall
-                  is blocking the port cf-serverd is listening on";
+  any::
+    "firewall"
+      usebundle => firewall_open("tcp", "5308"),
+      comment   => "We want cf-serverd to be accessible, its especially
+                    import for the policyhub to have this port open.";
+
+  am_policy_hub::
+    "policyhub"
+      usebundle => policyhub,
+      comment   => "Special configuration needed for the policyhub";
 
  reports:
   am_policy_hub::

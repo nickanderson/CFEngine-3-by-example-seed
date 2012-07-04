@@ -1,0 +1,16 @@
+bundle agent policyhub{
+vars:
+  redhat::
+    "package_list" slist => { "git" };
+
+
+packages:
+  redhat::
+    "$(package_list)"
+      package_policy => "add",
+      package_method => yum_rpm;  
+
+reports:
+  cfengine::
+    "This bundle is used to configure policyhub specific settings";
+}
