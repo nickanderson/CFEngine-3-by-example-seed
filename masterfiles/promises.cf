@@ -22,9 +22,10 @@ bundle agent main
 {
 
  commands:
+  am_policy_hub::
    "$(sys.cf_report)"
     args => "-f reporter_text.cf",
-    comment "Generate a report on the policy hub so we can see who has been connecting";
+    comment => "Generate a report on the policy hub so we can see who has been connecting";
 
  methods:
   "firewall"
