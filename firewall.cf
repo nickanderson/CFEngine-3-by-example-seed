@@ -1,0 +1,48 @@
+bundle agent firewall_open(proto, port){
+# Example usage
+# methods:
+#  "firewall"
+#    usebundle => firewall_open("tcp", "5308"),
+#    comment   => "Clients will not be able to bootstrap if the firewall
+#                  is blocking the port cf-serverd is listening on";
+  vars:
+    "check_firewall_open_content" string => "#!/bin/bash
+PROTO=$1
+PORT=$2
+
+/sbin/iptables -L -n | /bin/grep -q \" $PROTO dpt:$PORT \" 
+RETCODE=$?
+
+[ \"$RETCODE\" -eq 0 ] && /bin/echo \"+allowing_$PORT\"
+exit 0
+";
+
+  files:
+    "/var/cfengine/modules/check_firewall_open"
+      handle        => "firewall_open_files_check_firewall_open",
+      perms         => mog("700", "root", "root"),
+      create        => "true",
+      edit_defaults => empty,
+      edit_line     => append_if_no_line("$(check_firewall_open_content)");
+
+  commands:
+    "/var/cfengine/modules/check_firewall_open"
+      handle  => "firewall_open_commands_check_firewall_open",
+      args    => "$(proto) $(port)",
+      contain => in_shell,
+      module  => "true";
+
+    "/sbin/iptables"
+      handle     => "firewall_open_commands_iptables",
+      args       => "-I INPUT -p tcp --dport 5308 -j ACCEPT",
+      ifvarclass => "!allowing_$(port)",
+      classes    => if_repaired("firewall_fixed_allow_$(proto)_$(port)");
+
+  reports:
+    cfengine::
+    "My check indicates that the firewall is not allowing $(proto) $(port)",
+        ifvarclass => "!allowing_$(port)";
+
+    "Firewall repaired, now allowing $(proto) (port)",
+        ifvarclass => "firewall_fixed_allow_$(proto)_$(port)";
+}

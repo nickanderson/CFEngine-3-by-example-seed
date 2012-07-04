@@ -1,0 +1,6 @@
+body reporter control {
+    reports => { "lastseen" };
+    time_stamps => "true";
+    build_directory => "/var/cfengine/reports/lastseen.txt";
+    report_output => "text";
+}
