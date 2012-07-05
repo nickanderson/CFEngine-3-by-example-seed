@@ -1,5 +1,5 @@
-Getting-Started-with-CFEngine-3-seed
-====================================
+CFEngine 3 by Example - seed
+============================
 
 Seed to be used with vagrant project for bootstrapping a CFEngine 3 by
 example training enviornment.
