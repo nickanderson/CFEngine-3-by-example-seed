@@ -1,0 +1,24 @@
+{
+
+    "manifest":
+    {
+        "main.cf": { "desc": "main file" },
+        "README.md": { "documentation": true },
+        "params/cfengine-core.json": { "comment": "Sample parameters to check out the CFEngine core into /tmp/cfengine-core" },
+        "files/gitconfig.template": { "comment": "Git .config template to ensure compliance" },
+    },
+
+    "metadata":
+    {
+        "name": "VCS::vcs_mirror",
+        "version": 1.02,
+        "license": "MIT",
+        "portfolio": [ "cfdc" ],
+        "authors": [ "Nick Anderson <nick@cmdln.org>", "Ted Zlatanov <tzz@lifelogs.com>" ],
+        "depends": { "CFEngine::stdlib": { "version": 105 },
+                     "cfengine": { "version": "3.2.1" },
+                   },
+    },
+    "entry_point": "main.cf",
+    "interface": [ "main.cf" ]
+}
