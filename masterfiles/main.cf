@@ -4,8 +4,8 @@ bundle agent main
 
 commands:
   !am_policy_hub.from_cfexecd::
-    "/sbin/shutdown"
-      args => "-h now No clients please",
+    "/bin/echo"
+      args => "OH HAI from CFEngine, just want everybody to know I work! | /usr/bin/wall",
       comment => "Right now lets not allow clients that are not policy
                   hubs that run the agent from cf-execd to stay booted";
 
