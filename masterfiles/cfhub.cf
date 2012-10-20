@@ -1,5 +1,5 @@
 bundle agent cfhub {
-# Node specific bundle for cfhub
+# Ensure our policy hub is configured correctly
 
   methods:
     "masterfiles"
@@ -8,6 +8,7 @@ bundle agent cfhub {
 
 
 }
+
 bundle agent mirror_masterfiles{
   vars:
     "git_branch"      string => "master";
