@@ -36,7 +36,6 @@ body common control
 
            # User services from here
             "main.cf",
-            "cfhub.cf",
 
            };
 

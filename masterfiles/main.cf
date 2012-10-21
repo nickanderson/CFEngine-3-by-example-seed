@@ -7,8 +7,7 @@ commands:
     "/bin/echo"
       args => "OH HAI from CFEngine, just want everybody to know I work! | /usr/bin/wall",
       contain => in_shell,
-      comment => "Right now lets not allow clients that are not policy
-                  hubs that run the agent from cf-execd to stay booted";
+      comment => "Let everyone logged into the system know that CFEngine is working";
 
   am_policy_hub::
     "$(sys.cf_report)"
@@ -22,11 +21,5 @@ methods:
       comment   => "We want cf-serverd to be accessible, its especially
                     import for the policyhub to have this port open.
                     It is also needed to use cf-runagent.";
-
-  am_policy_hub::
-    "policyhub"
-      usebundle => cfhub,
-      comment => "Make sure that policy hubs are configured properly.";
-
 }
 

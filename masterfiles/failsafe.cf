@@ -6,7 +6,7 @@
 
 body common control
 {
- bundlesequence => { "update" };
+ bundlesequence => { "cfhub", "update" };
  version => "Community Failsafe.cf 1.0.0";
 }
 
@@ -247,4 +247,322 @@ body classes u_if_repaired(x)
 }
 
 #########################################################
+
+bundle agent cfhub {
+# Ensure our policy hub is configured correctly
+
+  methods:
+    "masterfiles"
+      usebundle => mirror_masterfiles,
+      comment => "Make sure that masterfiles is a mirror of a central repository";
+
+
+}
+
+bundle agent mirror_masterfiles{
+  vars:
+    "git_branch"      string => "master";
+    "git_bundle_home" string => "/var/cfengine/inputs/sketches/VCS/vcs_mirror";
+    "git_origin"      string => "/vagrant/masterfiles.git";
+    "git_path"        string => "/var/cfengine/masterfiles";
+    "git_runas"       string => "root";
+    "git_vcs"         string => "/usr/bin/git";
+
+  classes:
+    "masterfiles_is_a_clone" expression => fileexists("/var/cfengine/masterfiles/.git/config");
+
+  methods:
+    # If masterfiles is not a git repo, then we go ahead and point it at the central repo
+    !masterfiles_is_a_clone::
+      "masterfiles"
+        usebundle => point_masterfiles_to_repo,
+        comment   => "Lets make this directory a git repo and point it at the central repo to track";
+
+    # Now that it is a git repo we can use the vcs_mirror sketch to keep masterfiles in sync with 
+    # the central repository branch specified
+    masterfiles_is_a_clone::
+      "masterfiles"
+        usebundle => vcs_mirror("mirror_masterfiles.git_");
+}
+
+
+bundle agent point_masterfiles_to_repo{
+  vars:
+    redhat::
+      "package_list" slist => { "git" };
+      "central_git_repo" string => "/vagrant/masterfiles.git/";
+
+  classes:
+    "masterfiles_is_clone" expression => fileexists("/var/cfengine/masterfiles/.git/config");
+
+  commands:
+    !masterfiles_is_clone::
+      "/usr/bin/git"
+        args => "init",
+        contain => in_dir("$(def.dir_masterfiles)");
+
+      "/usr/bin/git"
+        handle => "policyhub_commands_git_remote_add_origin",
+        args => "remote add --track master origin $(central_git_repo)",
+        contain => in_dir("$(def.dir_masterfiles)"),
+        classes => if_repaired("point_masterfiles_to_repo_masterfiles_pointed_to_central_repo"),
+        comment => "$(def.dir_masterfiles) should be a clone of $(central_git_repo)";
+
+  packages:
+    redhat::
+      "$(package_list)"
+        package_policy => "add",
+        package_method => yum_rpm;
+
+  reports:
+    point_masterfiles_to_repo_masterfiles_pointed_to_central_repo::
+      "Masterfiles is now a git clone tracking $(central_git_repo)";
+}
+
+
+bundle agent vcs_mirror(prefix)
+{
+  vars:
+      "canon_prefix" string => canonify("$(prefix)");
+
+      # disabled due to https://cfengine.com/bugtracker/view.php?id=718
+      # for now use $($(prefix)bundle_home), which see in
+      # the bundle meta_vcs_mirror below
+
+      # "bundle_home"  string => dirname("$(this.promise_filename)"),
+      # policy => "overridable";
+
+    use_git::
+      # TODO: extend this to support multiple VCSs
+      "vcs_update_command" slist =>
+      {
+        @(git_update_command)
+      },
+      policy => "overridable";
+
+      "vcs_mirror_command" slist =>
+      {
+        @(git_mirror_command)
+      },
+      policy => "overridable";
+
+      "vcs_configfile" string => "$(git_configfile)",
+      policy => "overridable";
+
+    any::
+      "git_update_command" slist =>
+      {
+        # Remove untracked files
+        "$($(prefix)vcs) clean -f -f -x -q -d .",
+        # Discard changes to index and working tree since HEAD
+        "$($(prefix)vcs) reset -q --hard HEAD",
+        # Check out the proper branch
+        "$($(prefix)vcs) checkout -q $($(prefix)branch)",
+        # Pull the latest changes from origin
+        "$($(prefix)vcs) pull -q -s recursive -Xtheirs origin $($(prefix)branch)",
+        # Reset the working tree to the latest updates
+        "$($(prefix)vcs) reset -q --hard HEAD",
+      };
+
+      "git_mirror_command" slist =>
+      {
+        # clone the given repository with Git
+        "$($(prefix)vcs) clone -b $($(prefix)branch) $($(prefix)origin) $($(prefix)path)"
+      };
+
+      "git_configfile" string => "$($(prefix)path)/.git/config";
+
+  classes:
+      # test if the last component of the "vcs" path arg matches a known VCS
+      # TODO: use_git and known_vcs are global, so you can't mix VCSs in one run!!!
+      "use_git" expression => strcmp(lastnode("$($(prefix)vcs)","/"), "git");
+      "known_vcs" or => { "use_git" };
+      "$(canon_prefix)path_exists" expression => fileexists("$($(prefix)path)");
+
+      "$(canon_prefix)runas_current_user" expression => strcmp("$($(prefix)runas)", getenv("USER", 128));
+      # I can't use vcs_configfile here because it doesn't converge soon enough
+      use_git::
+      "$(canon_prefix)vcsconfig_exists" expression => fileexists("$(git_configfile)");
+
+  files:
+    use_git::
+      "$(git_configfile)"
+      handle => "vcs_configfile_contents",
+      comment => "Expand Git config file from template",
+      create => "false",
+      edit_defaults => empty,
+      ifvarclass => "$(canon_prefix)vcsconfig_exists",
+      edit_line => expand_template("$($(prefix)bundle_home)/files/gitconfig.template");
+
+  commands:
+
+    known_vcs::
+      # We only need to perform cleanup operations if we did not do a
+      # fresh new clone
+      "$(vcs_update_command)"
+      handle     => "vcs_update_command",
+      contain    => in_dir("$($(prefix)path)"),
+      ifvarclass => "$(canon_prefix)runas_current_user.$(canon_prefix)vcsconfig_exists.!$(canon_prefix)vcs_mirrored",
+      comment    => "Update an existing VCS repository in $($(prefix)path), no user override";
+
+      "$(vcs_update_command)"
+      handle     => "vcs_update_command",
+      contain    => setuid_in_dir("$($(prefix)runas)", "$($(prefix)path)"),
+      ifvarclass => "!$(canon_prefix)runas_current_user.$(canon_prefix)vcsconfig_exists.!$(canon_prefix)vcs_mirrored",
+      comment    => "Update an existing VCS repository in $($(prefix)path), user override to $($(prefix)runas)";
+
+      "$(vcs_mirror_command)"
+      handle     => "vcs_update_command",
+      ifvarclass => "$(canon_prefix)runas_current_user.!$(canon_prefix)vcsconfig_exists.!$(canon_prefix)vcs_mirrored",
+      classes    => if_ok("$(canon_prefix)vcs_mirrored"),
+      comment    => "Clone a VCS repository in $($(prefix)path), no user override";
+
+      "$(vcs_mirror_command)"
+      handle     => "vcs_update_command",
+      contain    => setuid("$($(prefix)runas)"),
+      ifvarclass => "!$(canon_prefix)runas_current_user.!$(canon_prefix)vcsconfig_exists.!$(canon_prefix)vcs_mirrored",
+      classes    => if_ok("$(canon_prefix)vcs_mirrored"),
+      comment    => "Clone a VCS repository in $($(prefix)path), user override to $($(prefix)runas)";
+
+  reports:
+    cfengine::
+      "VCS is $($(prefix)vcs), origin $($(prefix)origin), branch $($(prefix)branch), target path $($(prefix)path).  We'll load the templates from $($(prefix)bundle_home)."
+      ifvarclass => "$(canon_prefix)runas_current_user";
+
+      "VCS is $($(prefix)vcs), to be executed as user $($(prefix)runas), origin $($(prefix)origin), branch $($(prefix)branch), target path $($(prefix)path).  We'll load the templates from $($(prefix)bundle_home)."
+      ifvarclass => "!$(canon_prefix)runas_current_user";
+
+
+      "Cool, we're using Git."
+      ifvarclass => "use_git";
+
+    !known_vcs::
+      "Sorry, the requested VCS $($(prefix)vcs) is not handled yet.";
+
+    known_vcs::
+      "$($(prefix)vcs) is known.  We will look for the config file $(vcs_configfile)";
+
+      "VCS config file $(vcs_configfile) exists"
+      ifvarclass => "$(canon_prefix)vcsconfig_exists.!$(canon_prefix)vcs_mirrored";
+
+      "VCS config file $(vcs_configfile) does not exist"
+      ifvarclass => "!$(canon_prefix)vcsconfig_exists";
+
+      "Sorry, we could not clone $($(prefix)origin) (branch $($(prefix)branch)) in $($(prefix)path) because that path already exists"
+      ifvarclass => "$(canon_prefix)path_exists.!$(canon_prefix)vcsconfig_exists";
+
+      "New clone of $($(prefix)origin) (branch $($(prefix)branch)) created in $($(prefix)path)"
+      ifvarclass => "$(canon_prefix)vcs_mirrored";
+
+}
+
+body contain setuid_in_dir(user, dir)
+{
+      chdir => "$(dir)";
+      exec_owner => "$(user)";
+}
+
+bundle agent meta_vcs_mirror
+{
+  vars:
+      # acceptable values: "/usr/bin/git" for example
+      "optional_argument[vcs]" string => "string";
+      "default[vcs]"           string => "/usr/bin/git";
+
+      "argument[path]"   string => "string";
+      "argument[origin]" string => "string";
+      "argument[branch]" string => "string";
+
+      # this is not called "user" so it won't be confused with the remote user
+      "optional_argument[runas]" string => "string";
+      # as far as I know 128 is more than enough on any OS
+      "default[runas]"           string => getenv("USER", 128);
+
+      # this can't be determined from within the bundle due to:
+      # https://cfengine.com/bugtracker/view.php?id=718
+      "optional_argument[bundle_home]" string => "string";
+      # this default will probably be incorrect, either use cfsketch --generate
+      # or supply it yourself
+      "default[bundle_home]"           string => dirname("$(this.promise_filename)");
+}
+
+body contain setuid(x)
+{
+exec_owner => "$(x)";
+useshell => "false";
+}
+
+body contain in_dir(s)
+{
+chdir => "$(s)";
+}
+
+body edit_defaults empty
+{
+empty_file_before_editing => "true";
+edit_backup => "false";
+max_file_size => "300000";
+}
+
+body package_method yum_rpm
+# Contributed by Trond Hasle Amundsen
+
+# More efficient package method for RedHat - uses rpm to list instead of yum
+# Notes:
+# - using $(name).$(arch) instead of $(name) for package_name_convention
+#   causes uninstallation to fail.
+# - using allmatches to remove for all architectures
+#
+{
+  package_changes => "bulk";
+  package_list_command => "/bin/rpm -qa --qf '%{name} %{version}-%{release} %{arch}\n'";
+  package_patch_list_command => "/usr/bin/yum check-update";
+
+  package_list_name_regex    => "^(\S+?)\s\S+?\s\S+$";
+  package_list_version_regex => "^\S+?\s(\S+?)\s\S+$";
+  package_list_arch_regex    => "^\S+?\s\S+?\s(\S+)$";
+
+  package_installed_regex => ".*";
+  package_name_convention => "$(name)";
+
+  package_patch_installed_regex => "^\s.*";
+  package_patch_name_regex    => "([^.]+).*";
+  package_patch_version_regex => "[^\s]\s+([^\s]+).*";
+  package_patch_arch_regex    => "[^.]+\.([^\s]+).*";
+
+  package_add_command    => "/usr/bin/yum -y install";
+  package_update_command => "/usr/bin/yum -y update";
+  package_delete_command => "/bin/rpm -e --nodeps --allmatches";
+  package_verify_command => "/bin/rpm -V";
+}
+
+bundle edit_line expand_template(templatefile)
+
+ # Read in the named text file and expand $(var)
+ # inside the file
+
+{
+insert_lines:
+
+   "$(templatefile)"
+
+        insert_type => "file",
+            comment => "Expand variables in the template file",
+     expand_scalars => "true";
+}
+
+body classes if_repaired(x)
+{
+promise_repaired => { "$(x)" };
+}
+
+body classes if_ok(x)
+{
+promise_repaired => { "$(x)" };
+promise_kept => { "$(x)" };
+}
+
+
+
+
 
