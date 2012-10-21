@@ -566,3 +566,19 @@ promise_kept => { "$(x)" };
 
 
 
+###############################################################################
+#
+# common def
+#  - common/global variables and classes here  
+#
+###############################################################################
+
+bundle common def
+{
+ vars:
+  "dir_masterfiles" string => translatepath("$(sys.workdir)/masterfiles"),
+                   comment => "Define masterfiles path",
+                    handle => "common_def_vars_dir_masterfiles";
+
+}
+
