@@ -19,7 +19,7 @@ commands:
 methods:
   any::
     "Firewall Open cf-serverd"
-      handle => "main_methods_firewall_open_cf_serverd"
+      handle => "main_methods_firewall_open_cf_serverd",
       usebundle => firewall_open("tcp", "5308"),
       comment   => "We want cf-serverd to be accessible, its especially
                     import for the policyhub to have this port open.
