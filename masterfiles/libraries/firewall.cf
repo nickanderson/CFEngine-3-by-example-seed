@@ -34,7 +34,7 @@ exit 0
 
     "/sbin/iptables"
       handle     => "firewall_open_commands_iptables",
-      args       => "-I INPUT -p tcp --dport 5308 -j ACCEPT",
+      args       => "-I INPUT -p $(proto) --dport $(port) -j ACCEPT",
       ifvarclass => "!allowing_$(port)",
       classes    => if_repaired("firewall_fixed_allow_$(proto)_$(port)");
 
@@ -43,6 +43,6 @@ exit 0
     "My check indicates that the firewall is not allowing $(proto) $(port)",
         ifvarclass => "!allowing_$(port)";
 
-    "Firewall repaired, now allowing $(proto) (port)",
+    "Firewall repaired, now allowing $(proto) $(port)",
         ifvarclass => "firewall_fixed_allow_$(proto)_$(port)";
 }
